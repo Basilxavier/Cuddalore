@@ -97,8 +97,8 @@
 
     <script>
         const API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent";
-        // NOTE: The apiKey will be automatically injected by the environment.
-        const apiKey = "";
+        // To run this app outside the development environment, you MUST paste your Gemini API Key here.
+        const apiKey = "YOUR_GEMINI_API_KEY_HERE"; // <<< PASTE YOUR KEY HERE
 
         // --- Utility Functions ---
 
@@ -159,6 +159,16 @@
                 outputDiv.innerHTML = 'Upload your radar images and click \'Generate Nowcast\' to receive the 0-1 hour weather prediction.';
                 return;
             }
+
+            // Check if API key is missing
+            if (apiKey === "YOUR_GEMINI_API_KEY_HERE" || !apiKey) {
+                errorMsg.textContent = 'API Key is missing! Please insert your valid Gemini API Key into the JavaScript code to enable the analysis function.';
+                errorMsg.classList.remove('hidden');
+                predictBtn.disabled = false;
+                outputDiv.innerHTML = '<p class="text-red-600 font-semibold">Prediction Failed: API Key Required.</p>';
+                return;
+            }
+
 
             try {
                 // 2. Convert Images to Base64
