@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cuddalore Radar Nowcast Predictor</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'primary-blue': '#1e40af', // Darker blue for accents
+                        'secondary-cyan': '#22d3ee', // Cyan for highlights
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        /* Custom loading spinner for visual appeal */
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid #fff;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans min-h-screen p-4 md:p-8">
+
+    <div class="max-w-4xl mx-auto">
+        <header class="text-center mb-10 p-6 bg-primary-blue text-white rounded-xl shadow-lg">
+            <h1 class="text-3xl md:text-4xl font-extrabold tracking-tight mb-1">Doppler Radar Nowcast Analyst</h1>
+            <p class="text-secondary-cyan text-lg">Cuddalore Region (0-1 Hour Prediction)</p>
+        </header>
+
+        <section id="input-section" class="bg-white p-6 md:p-8 rounded-xl shadow-2xl mb-8 border border-gray-100">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-6 border-b pb-2">Upload Radar Imagery (PNG/JPG)</h2>
+
+            <!-- Grid for 3 Inputs -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+                <!-- Image 1: Zmax -->
+                <div class="flex flex-col p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <label for="zMaxInput" class="text-lg font-medium text-primary-blue mb-2">$Z_{max}$ (Maximum Reflectivity)</label>
+                    <p class="text-sm text-gray-600 mb-3">Crucial for identifying storm tops and core intensity.</p>
+                    <input type="file" id="zMaxInput" accept="image/png, image/jpeg" onchange="previewImage('zMaxInput', 'zMaxPreview')" class="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary-blue file:text-white hover:file:bg-blue-700 transition duration-150" />
+                    <img id="zMaxPreview" class="mt-4 hidden w-full h-auto object-cover rounded-lg shadow-md max-h-40" alt="Z-Max Preview">
+                </div>
+
+                <!-- Image 2: SRI -->
+                <div class="flex flex-col p-4 bg-cyan-50 rounded-lg border border-cyan-200">
+                    <label for="sriInput" class="text-lg font-medium text-primary-blue mb-2">SRI (Surface Rainfall Intensity)</label>
+                    <p class="text-sm text-gray-600 mb-3">Shows current estimated precipitation rates at the surface.</p>
+                    <input type="file" id="sriInput" accept="image/png, image/jpeg" onchange="previewImage('sriInput', 'sriPreview')" class="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary-blue file:text-white hover:file:bg-blue-700 transition duration-150" />
+                    <img id="sriPreview" class="mt-4 hidden w-full h-auto object-cover rounded-lg shadow-md max-h-40" alt="SRI Preview">
+                </div>
+
+                <!-- Image 3: PPI -->
+                <div class="flex flex-col p-4 bg-indigo-50 rounded-lg border border-indigo-200">
+                    <label for="ppiInput" class="text-lg font-medium text-primary-blue mb-2">PPI (Plan Position Indicator)</label>
+                    <p class="text-sm text-gray-600 mb-3">Reveals storm structure and aids in movement analysis.</p>
+                    <input type="file" id="ppiInput" accept="image/png, image/jpeg" onchange="previewImage('ppiInput', 'ppiPreview')" class="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary-blue file:text-white hover:file:bg-blue-700 transition duration-150" />
+                    <img id="ppiPreview" class="mt-4 hidden w-full h-auto object-cover rounded-lg shadow-md max-h-40" alt="PPI Preview">
+                </div>
+            </div>
+
+            <!-- Button -->
+            <button id="predictBtn" onclick="generatePrediction()"
+                    class="mt-8 w-full py-4 px-6 bg-primary-blue text-white text-xl font-bold rounded-xl shadow-lg hover:bg-blue-700 transition duration-200 disabled:opacity-50 flex items-center justify-center">
+                Generate Cuddalore Nowcast
+            </button>
+            <p id="errorMessage" class="text-center mt-4 text-red-600 font-medium hidden"></p>
+        </section>
+
+        <!-- Output Section -->
+        <section id="output-section" class="bg-white p-6 md:p-8 rounded-xl shadow-2xl border border-gray-100">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Nowcast Prediction Summary</h2>
+            <div id="predictionOutput" class="min-h-32 p-4 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 leading-relaxed italic">
+                Upload your radar images and click 'Generate Nowcast' to receive the 0-1 hour weather prediction.
+            </div>
+        </section>
+    </div>
+
+    <script>
+        const API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent";
+        // NOTE: The apiKey will be automatically injected by the environment.
+        const apiKey = "";
+
+        // --- Utility Functions ---
+
+        /** Converts a File object to a Base64 string. */
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    // Extract only the base64 data part (remove "data:image/jpeg;base64,")
+                    const base64Data = reader.result.split(',')[1];
+                    resolve(base64Data);
+                };
+                reader.onerror = (error) => reject(error);
+                reader.readAsDataURL(file);
+            });
+        }
+
+        /** Simple image preview logic */
+        function previewImage(inputId, previewId) {
+            const input = document.getElementById(inputId);
+            const preview = document.getElementById(previewId);
+
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    preview.src = e.target.result;
+                    preview.classList.remove('hidden');
+                };
+                reader.readAsDataURL(input.files[0]);
+            } else {
+                preview.classList.add('hidden');
+                preview.src = '';
+            }
+        }
+
+        // --- Core Prediction Logic ---
+
+        async function generatePrediction() {
+            const predictBtn = document.getElementById('predictBtn');
+            const outputDiv = document.getElementById('predictionOutput');
+            const errorMsg = document.getElementById('errorMessage');
+
+            // Reset UI
+            errorMsg.classList.add('hidden');
+            errorMsg.textContent = '';
+            outputDiv.innerHTML = '<div class="flex items-center space-x-3"><div class="spinner"></div><span class="font-bold text-primary-blue">Analyzing 3 Radar Products for Nowcast...</span></div>';
+            predictBtn.disabled = true;
+
+            const zMaxFile = document.getElementById('zMaxInput').files[0];
+            const sriFile = document.getElementById('sriInput').files[0];
+            const ppiFile = document.getElementById('ppiInput').files[0];
+
+            // 1. Validate Inputs
+            if (!zMaxFile || !sriFile || !ppiFile) {
+                errorMsg.textContent = 'Please upload all three radar images to proceed with the analysis.';
+                errorMsg.classList.remove('hidden');
+                predictBtn.disabled = false;
+                outputDiv.innerHTML = 'Upload your radar images and click \'Generate Nowcast\' to receive the 0-1 hour weather prediction.';
+                return;
+            }
+
+            try {
+                // 2. Convert Images to Base64
+                const [zMaxBase64, sriBase64, ppiBase64] = await Promise.all([
+                    fileToBase64(zMaxFile),
+                    fileToBase64(sriFile),
+                    fileToBase64(ppiFile)
+                ]);
+
+                // 3. Construct the API Payload
+                const systemPrompt = `You are a friendly local weather expert providing a 0-1 hour Nowcast for the Cuddalore region. Your task is to interpret the three technical radar images and translate the findings into a simple, non-technical summary. Avoid all meteorological jargon (like 'reflectivity', '$Z_{max}$', 'PPI', or 'SRI'). Focus solely on what the average person will experience: expected rain type (drizzle, heavy downpour), wind risk, and the next 60 minutes' outlook. Output a summary prediction (maximum 200 words) in an encouraging and clear tone.`;
+                const userQuery = "Analyze the provided radar images and generate a Nowcast prediction summary for the Cuddalore region. Ensure the final prediction is written in clear, simple, and non-technical language that is easily understood by the general public.";
+
+                const payload = {
+                    contents: [{
+                        role: "user",
+                        parts: [
+                            { text: userQuery },
+                            // Image 1: Zmax
+                            { inlineData: { mimeType: zMaxFile.type, data: zMaxBase64 } },
+                            // Image 2: SRI
+                            { inlineData: { mimeType: sriFile.type, data: sriBase64 } },
+                            // Image 3: PPI
+                            { inlineData: { mimeType: ppiFile.type, data: ppiBase64 } }
+                        ]
+                    }],
+                    systemInstruction: {
+                        parts: [{ text: systemPrompt }]
+                    }
+                };
+
+                // 4. API Call with Exponential Backoff
+                let response;
+                let delay = 1000;
+                for (let i = 0; i < 3; i++) { // Max 3 retries
+                    try {
+                        const url = `${API_URL}?key=${apiKey}`;
+                        response = await fetch(url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+
+                        if (response.status === 429) { // Rate limit error
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                            delay *= 2;
+                            continue; // Retry
+                        }
+
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! Status: ${response.status}`);
+                        }
+
+                        break; // Success
+                    } catch (e) {
+                        if (i === 2) throw e; // Throw if final attempt fails
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        delay *= 2;
+                    }
+                }
+
+                if (!response) {
+                    throw new Error("API call failed after multiple retries.");
+                }
+
+                const result = await response.json();
+                const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+                if (text) {
+                    outputDiv.innerHTML = `<p class="font-normal text-gray-800">${text}</p>`;
+                } else {
+                    throw new Error("Received an empty or malformed response from the analysis model.");
+                }
+
+            } catch (error) {
+                console.error("Prediction Error:", error);
+                errorMsg.textContent = `Analysis failed. Details: ${error.message}. Please check your images and try again.`;
+                errorMsg.classList.remove('hidden');
+                outputDiv.innerHTML = '<p class="text-red-600 font-semibold">Prediction Failed.</p>';
+            } finally {
+                predictBtn.disabled = false;
+            }
+        }
+    </script>
+
+</body>
+</html>
